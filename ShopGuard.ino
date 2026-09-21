@@ -20,7 +20,24 @@ PIR LOW + vibration HIGH → Tamper alert (possible break‑in attempt).
 PIR HIGH + vibration LOW → Motion alert (someone moving near shop).
 
 Both LOW → Normal state.
+------------------------------------------------
+30-08-2026
+After one tim buzzer on, immediately it is off even if there is vibration, need to analyse how this vibration sensor works separately
 */
+
+#define BLYNK_TEMPLATE_ID "TMPL3DP3hqnM2"
+#define BLYNK_TEMPLATE_NAME "Quickstart Template"
+#define BLYNK_AUTH_TOKEN "CMGZelU8TbB_oOb_w0QqY6zdXcxHLRuN"
+
+#define BLYNK_PRINT Serial
+
+
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+
+char ssid[] = "ACTFIBERNET";
+char pass[] = "act12345";
+
 #include <Wire.h>
 #include "RTClib.h"
 
@@ -43,9 +60,13 @@ void setup() {
   pinMode(pir_pin,INPUT);
   pinMode(vib_pin,INPUT);
   pinMode(buzzer,OUTPUT);
+  Blynk.begin(BLYNK_AUTH_TOKEN,ssid,pass);
+
+//Blynk.logEvent("intrusion", "Test notification from setup");
+
   uint8_t calibration_time = 30;
   Serial.begin(9600);
-  Wire.begin(D2,D1);
+  Wire.begin(D2,D1); //SDA=D2, SCL=D1
   Serial.println("PIR Sensor under calibration...");
 delay(calibration_time * 1000);
 Serial.println("PIR Sensor is ACTIVE!..");
@@ -98,6 +119,7 @@ bool vib_state()
   }
 void loop() 
 {
+  Blynk.run();
   // put your main code here, to run repeatedly:
   DateTime now = rtc.now();
 
@@ -107,21 +129,30 @@ void loop()
   Serial.println(now.minute());
   delay(1000);
 
-  if(now.hour()>=19 || (now.hour()<=5))
+  if(now.hour()>=13 || (now.hour()<=5))
   {
     Serial.println("ShopGuard is ACTIVE!!!");
+    if(now.hour() == 23 && now.minute()>00)    
+    {
+      Blynk.logEvent("activation","Hi RLDC, I'm Guarding your Shop, Dont worry: )"); //Blynk.logEvent("event_code","Message")
+    }
     bool current_pir_state = digitalRead(pir_pin);
     bool stable_vib_state = vib_state();
-
+    
+    Blynk.virtualWrite(V0,current_pir_state);
     Serial.print("PIR:");
     Serial.println(current_pir_state);
     Serial.print("Vibration:");
     Serial.println(stable_vib_state);
+    Blynk.virtualWrite(V0,stable_vib_state);
     
     delay(1000);
     if( (current_pir_state == HIGH) && (stable_vib_state == HIGH) )
     {
       Serial.println("Motion & Intrusion Detected!");
+      Blynk.virtualWrite(V4,"Motion & Intrusion Detected!");
+      Blynk.logEvent("intrusion", "Motion & Intrusion Detected!");
+
       delay(1000);
       digitalWrite(buzzer,HIGH);
       previous_pir_state = HIGH;
@@ -129,6 +160,9 @@ void loop()
     else if((current_pir_state == HIGH) && (stable_vib_state == LOW))
     {
       Serial.println("Motion Detected!");
+      Blynk.virtualWrite(V4,"Motion Detected!");
+      Blynk.logEvent("motion","Motion Detected!");
+
       delay(1000);
       //digitalWrite(buzzer,HIGH);
       previous_pir_state = HIGH;
@@ -136,6 +170,8 @@ void loop()
     else if((current_pir_state == LOW) && (stable_vib_state == HIGH) )
     {
       Serial.println("Vibration without any motion, Be Careful!!!");
+      Blynk.virtualWrite(V4,"Vibration without any motion, Be Careful!!!");
+      Blynk.logEvent("vibration","Vibration without any motion, Be Careful!!!");
       delay(1000);
       digitalWrite(buzzer,HIGH);
       previous_pir_state = LOW;
@@ -143,6 +179,7 @@ void loop()
     else if( (current_pir_state == LOW) && (stable_vib_state == LOW))
     {
       Serial.println("Things are normal, Dont worry!");
+      Blynk.virtualWrite(V4,"Things are normal, Dont worry!");
       delay(1000);
       digitalWrite(buzzer,LOW);
       previous_pir_state = LOW;
@@ -154,6 +191,7 @@ void loop()
   else
   {
     Serial.println("ShopGuard is INACTIVE :(");
+    digitalWrite(buzzer,LOW);
     delay(1000);
   }
 }
