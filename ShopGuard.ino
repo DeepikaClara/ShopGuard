@@ -34,6 +34,7 @@ After one tim buzzer on, immediately it is off even if there is vibration, need 
 
 #include <ESP8266WiFi.h>
 #include <BlynkSimpleEsp8266.h>
+#include <PubSubClient.h>
 
 char ssid[] = "ACTFIBERNET";
 char pass[] = "act12345";
@@ -55,17 +56,79 @@ unsigned long current_time = 0;
 unsigned long last_trigger =0;
 bool current_vib_state = LOW;
 
+//MQTT broker details
+const char* mqtt_server = "test.mosquitto.org";
+// Create a random client ID
+    String clientId = "MQTTExplorer-Deepika"+ String(random(0xffff), HEX);
+
+
+//Create Wifi and MQTT clients
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+//MQTT TOPICS
+const char* status = "shopguard/health_status";
+const char* vibration = "shopguard/vibration_alert";
+const char* motion = "shopguard/motion_alert";
+const char* critical = "shopguard/critical_alert";
+
+//wifi setup required for mqtt
+void setup_wifi()
+{
+  delay(10);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid,pass);
+
+  while((WiFi.status())!= WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("Wifi Connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect()
+{
+  while(!client.connected())
+  {
+    Serial.print("Attempting MQTT Connection...");
+    if (client.connect(clientId.c_str()))
+
+    {
+      Serial.println("Connected");
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println("try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 void setup() {
   // put your setup code here, to run once:
+  Serial.begin(115200);
   pinMode(pir_pin,INPUT);
   pinMode(vib_pin,INPUT);
   pinMode(buzzer,OUTPUT);
   Blynk.begin(BLYNK_AUTH_TOKEN,ssid,pass);
 
+  setup_wifi();
+client.setServer("test.mosquitto.org",1883);
+
 //Blynk.logEvent("intrusion", "Test notification from setup");
 
   uint8_t calibration_time = 30;
-  Serial.begin(9600);
+  
   Wire.begin(D2,D1); //SDA=D2, SCL=D1
   Serial.println("PIR Sensor under calibration...");
 delay(calibration_time * 1000);
@@ -129,12 +192,23 @@ void loop()
   Serial.println(now.minute());
   delay(1000);
 
+if(!client.connected())
+{
+  reconnect();
+}
+client.loop();
+
   if(now.hour()>=13 || (now.hour()<=5))
   {
     Serial.println("ShopGuard is ACTIVE!!!");
     if(now.hour() == 23 && now.minute()>00)    
     {
       Blynk.logEvent("activation","Hi RLDC, I'm Guarding your Shop, Dont worry: )"); //Blynk.logEvent("event_code","Message")
+      client.publish(status,"Hi RLDC, I'm Guarding your Shop, Dont worry: )");
+
+      /*MQTT Publish syntax:
+      client.publish(const char* topic, const char* payload)
+      */
     }
     bool current_pir_state = digitalRead(pir_pin);
     bool stable_vib_state = vib_state();
@@ -149,9 +223,10 @@ void loop()
     delay(1000);
     if( (current_pir_state == HIGH) && (stable_vib_state == HIGH) )
     {
-      Serial.println("Motion & Intrusion Detected!");
-      Blynk.virtualWrite(V4,"Motion & Intrusion Detected!");
-      Blynk.logEvent("intrusion", "Motion & Intrusion Detected!");
+      Serial.println("Motion & Intrusion Detected! Please take this seriously!!!");
+      Blynk.virtualWrite(V4,"Motion & Intrusion Detected! Please take this seriously!!!");
+      Blynk.logEvent("intrusion", "Motion & Intrusion Detected! Please take this seriously!!!");
+      client.publish(critical,"Motion & Intrusion Detected! Please take this seriously!!!");
 
       delay(1000);
       digitalWrite(buzzer,HIGH);
@@ -172,6 +247,7 @@ void loop()
       Serial.println("Vibration without any motion, Be Careful!!!");
       Blynk.virtualWrite(V4,"Vibration without any motion, Be Careful!!!");
       Blynk.logEvent("vibration","Vibration without any motion, Be Careful!!!");
+      client.publish(vibration,"vibration without any motion, Be Careful!!");
       delay(1000);
       digitalWrite(buzzer,HIGH);
       previous_pir_state = LOW;
