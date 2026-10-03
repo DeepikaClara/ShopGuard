@@ -1,37 +1,11 @@
-/*#ShopGuard
-Step 1: Motion Detection Problem Statement → Detect human movement in front of shop.
-
-Components → PIR sensor + ESP8266.
-
-Outputs → Buzzer + Blynk notification.
-
-Skills Acquired → GPIO handling, sensor interfacing, IoT notifications.
-24-08-2026 | Comments: LDR is so sensitive, even small lightness is detected as HIGH/LOW, need to work on this and because of this 
-you unknowingly thnkking it has wrong.
-->Also need to check whether giving 3 V to LDR is working fine since previously i didn't took this sensitive factor 
-->if stable in both high or low, pir is sensing, but logic has to be pir should sense only when ldr is high and darkness and time should be 11:00 to 5 am. 
-Removed LDR, since already restricted with night timings
-------------------------------------------------------------
-29-08-2026
-PIR HIGH + vibration HIGH → Intrusion confirmed.
-
-PIR LOW + vibration HIGH → Tamper alert (possible break‑in attempt).
-
-PIR HIGH + vibration LOW → Motion alert (someone moving near shop).
-
-Both LOW → Normal state.
-------------------------------------------------
-30-08-2026
-After one tim buzzer on, immediately it is off even if there is vibration, need to analyse how this vibration sensor works separately
-*/
-
 #define BLYNK_TEMPLATE_ID "TMPL3DP3hqnM2"
 #define BLYNK_TEMPLATE_NAME "Quickstart Template"
 #define BLYNK_AUTH_TOKEN "CMGZelU8TbB_oOb_w0QqY6zdXcxHLRuN"
 
 #define BLYNK_PRINT Serial
 
-
+#include <ArduinoJson.h>
+#include <ArduinoJson.hpp>
 #include <ESP8266WiFi.h>
 #include <BlynkSimpleEsp8266.h>
 #include <PubSubClient.h>
@@ -44,13 +18,16 @@ char pass[] = "act12345";
 
 RTC_DS3231 rtc;
 
+
+
+
 const uint8_t pir_pin = D6;
 const uint8_t buzzer = D4;
 const uint8_t vib_pin = D5;
 bool previous_pir_state = LOW;
 //bool previous_vib_state = LOW;
 //bool led_reset = 0;
-//bool current_pir_state = LOW;
+bool current_pir_state = LOW;
 unsigned long debouncing_delay = 500;
 unsigned long current_time = 0;
 unsigned long last_trigger =0;
@@ -72,6 +49,8 @@ const char* vibration = "shopguard/vibration_alert";
 const char* motion = "shopguard/motion_alert";
 const char* critical = "shopguard/critical_alert";
 
+
+
 //wifi setup required for mqtt
 void setup_wifi()
 {
@@ -92,6 +71,8 @@ void setup_wifi()
   Serial.println("Wifi Connected");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+
 }
 
 void reconnect()
@@ -124,6 +105,8 @@ void setup() {
 
   setup_wifi();
 client.setServer("test.mosquitto.org",1883);
+
+
 
 //Blynk.logEvent("intrusion", "Test notification from setup");
 
@@ -220,13 +203,24 @@ client.loop();
     Serial.println(stable_vib_state);
     Blynk.virtualWrite(V0,stable_vib_state);
     
+  //MQTT json response  
+StaticJsonDocument<200> doc;
+  doc["device_name"]="SHOPGUARD";
+doc["pir_output"]= current_pir_state;
+doc["vib_output"]=current_vib_state;
+doc["alert"]="Motion & Intrusion Detected! Please take this seriously!!!"s;
+
+char buffer[250];
+serializeJson(doc,buffer);
+
     delay(1000);
     if( (current_pir_state == HIGH) && (stable_vib_state == HIGH) )
     {
       Serial.println("Motion & Intrusion Detected! Please take this seriously!!!");
       Blynk.virtualWrite(V4,"Motion & Intrusion Detected! Please take this seriously!!!");
       Blynk.logEvent("intrusion", "Motion & Intrusion Detected! Please take this seriously!!!");
-      client.publish(critical,"Motion & Intrusion Detected! Please take this seriously!!!");
+      //client.publish(critical,"Motion & Intrusion Detected! Please take this seriously!!!");
+      client.publish(critical,buffer);
 
       delay(1000);
       digitalWrite(buzzer,HIGH);
